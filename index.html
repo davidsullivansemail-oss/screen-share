@@ -1,138 +1,141 @@
 <!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8" />
-
-<style id="webmakerstyle">
-
-</style>
-</head>
-<body>
-<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Screen Share App</title>
+  <meta charset="UTF-8" />
+  <title>Screen Share App</title>
 
-<style>
-body {
-  background-color: #121212;
-  color: white;
-  font-family: sans-serif;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-}
+  <style>
+    body {
+      background-color: #121212;
+      color: white;
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
 
-.container {
-  text-align: center;
-  width: 90%;
-  max-width: 800px;
-}
+    .container {
+      text-align: center;
+      width: 90%;
+      max-width: 800px;
+    }
 
-video {
-  width: 100%;
-  border-radius: 12px;
-  background-color: #000;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  margin-bottom: 20px;
-}
+    video {
+      width: 100%;
+      border-radius: 12px;
+      background-color: #000;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      margin-bottom: 20px;
+    }
 
-button {
-  padding: 12px 24px;
-  margin: 0 10px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-}
+    button {
+      padding: 12px 24px;
+      margin: 0 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
 
-#startBtn { background-color: #2ecc71; color: white; }
-#stopBtn { background-color: #e74c3c; color: white; }
-</style>
+    #startBtn {
+      background-color: #2ecc71;
+      color: white;
+    }
+
+    #stopBtn {
+      background-color: #e74c3c;
+      color: white;
+    }
+  </style>
 </head>
 
 <body>
-<div class="container">
-  <h1>Screen Share App</h1>
-  <video id="video" autoplay playsinline></video>
-  <br>
-  <button id="startBtn">Start Sharing</button>
-  <button id="stopBtn">Stop Sharing</button>
-</div>
+  <div class="container">
+    <h1>Screen Share App</h1>
+    <video id="video" autoplay playsinline></video>
+    <br />
+    <button id="startBtn">Start Sharing</button>
+    <button id="stopBtn">Stop Sharing</button>
+  </div>
 
-<script>
-const video = document.getElementById("video");
-const startBtn = document.getElementById("startBtn");
-const stopBtn = document.getElementById("stopBtn");
+  <script>
+    const video = document.getElementById("video");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
 
-const ws = new WebSocket("wss://signal.openshare.dev"); // public signaling server
-const pc = new RTCPeerConnection({
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-});
+    // Public signaling server (testing/demo use)
+    const ws = new WebSocket("wss://signal.openshare.dev");
 
-let localStream;
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
 
-// Send ICE candidates
-pc.onicecandidate = e => {
-  if (e.candidate) {
-    ws.send(JSON.stringify({ type: "ice", data: e.candidate }));
-  }
-};
+    let localStream = null;
 
-// Receive remote stream
-pc.ontrack = e => {
-  video.srcObject = e.streams[0];
-};
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        ws.send(JSON.stringify({
+          type: "ice",
+          data: e.candidate
+        }));
+      }
+    };
 
-ws.onmessage = async msg => {
-  const data = JSON.parse(msg.data);
+    pc.ontrack = e => {
+      video.srcObject = e.streams[0];
+    };
 
-  if (data.type === "offer") {
-    await pc.setRemoteDescription(data.data);
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    ws.send(JSON.stringify({ type: "answer", data: answer }));
-  }
+    ws.onmessage = async message => {
+      const msg = JSON.parse(message.data);
 
-  if (data.type === "answer") {
-    await pc.setRemoteDescription(data.data);
-  }
+      if (msg.type === "offer") {
+        await pc.setRemoteDescription(msg.data);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({
+          type: "answer",
+          data: answer
+        }));
+      }
 
-  if (data.type === "ice") {
-    await pc.addIceCandidate(data.data);
-  }
-};
+      if (msg.type === "answer") {
+        await pc.setRemoteDescription(msg.data);
+      }
 
-startBtn.onclick = async () => {
-  localStream = await navigator.mediaDevices.getDisplayMedia({
-    video: true,
-    audio: true
-  });
+      if (msg.type === "ice") {
+        await pc.addIceCandidate(msg.data);
+      }
+    };
 
-  localStream.getTracks().forEach(track =>
-    pc.addTrack(track, localStream)
-  );
+    startBtn.onclick = async () => {
+      localStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true
+      });
 
-  video.srcObject = localStream;
+      localStream.getTracks().forEach(track =>
+        pc.addTrack(track, localStream)
+      );
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  ws.send(JSON.stringify({ type: "offer", data: offer }));
-};
+      video.srcObject = localStream;
 
-stopBtn.onclick = () => {
-  if (localStream) {
-    localStream.getTracks().forEach(t => t.stop());
-  }
-  pc.close();
-};
-</script>
-</body>
-</html>
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
+      ws.send(JSON.stringify({
+        type: "offer",
+        data: offer
+      }));
+    };
 
-
+    stopBtn.onclick = () => {
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+      }
+      pc.close();
+      video.srcObject = null;
+    };
+  </script>
 </body>
 </html>
